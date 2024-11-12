@@ -1,0 +1,157 @@
+# Define the variables interactively
+
+$resourceGroupName = Read-Host -Prompt "Enter the name you would like to give resource group (if the resource group doesn't already exist)"
+
+$location = Read-Host -Prompt "Enter the Azure region into which you would like to deploy the VM (for example, uksouth)"
+
+$vmName = Read-Host -Prompt "Enter the name you woud like to give the virtual machine"
+
+$vnetName = Read-Host -Prompt "Enter the name you woud like to give the virtual network"
+
+$subnetName = Read-Host -Prompt "Enter the name you woud like to give the subnet"
+
+$publicIPName = Read-Host -Prompt "Enter the  name you woud like to give the public IP"
+
+$nicName = Read-Host -Prompt "Enter the name you woud like to give thenetwork interface card (NIC)"
+
+$nsgName = Read-Host -Prompt "Enter the name you woud like to give the network security group (NSG)"
+
+$vmSize = Read-Host -Prompt "Enter the VM size (for example, Standard_DS1_v2)"
+
+$image = Read-Host -Prompt "Enter the VM image (for example, UbuntuLTS)"
+
+ 
+
+# Create Resource Group if it doesn't exist
+
+$rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($rg -eq $null) {
+
+    Write-Output "Creating resource group: $resourceGroupName"
+
+    New-AzResourceGroup -Name $resourceGroupName -Location $location
+
+} else {
+
+    Write-Output "Resource group $resourceGroupName already exists."
+
+}
+
+ 
+
+# Create Virtual Network if it doesn't exist
+
+$vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($vnet -eq $null) {
+
+    Write-Output "Creating virtual network: $vnetName"
+
+    $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName -Location $location -Name $vnetName -AddressPrefix "10.0.0.0/16"
+
+} else {
+
+    Write-Output "Virtual network $vnetName already exists."
+
+}
+
+ 
+
+# Create Subnet if it doesn't exist
+
+$subnet = $vnet | Get-AzVirtualNetworkSubnetConfig -Name $subnetName -ErrorAction SilentlyContinue
+
+if ($subnet -eq $null) {
+
+    Write-Output "Creating subnet: $subnetName"
+
+    $subnet = Add-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix "10.0.1.0/24" -VirtualNetwork $vnet
+
+    $vnet | Set-AzVirtualNetwork
+
+} else {
+
+    Write-Output "Subnet $subnetName already exists."
+
+}
+
+ 
+
+# Create Public IP if it doesn't exist
+
+$publicIP = Get-AzPublicIpAddress -Name $publicIPName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($publicIP -eq $null) {
+
+    Write-Output "Creating public IP: $publicIPName"
+
+    $publicIP = New-AzPublicIpAddress -ResourceGroupName $resourceGroupName -Location $location -Name $publicIPName -AllocationMethod Static -Sku Standard
+
+} else {
+
+    Write-Output "Public IP $publicIPName already exists."
+
+}
+
+ 
+
+# Create Network Security Group if it doesn't exist
+
+$nsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($nsg -eq $null) {
+
+    Write-Output "Creating network security group: $nsgName"
+
+    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName -Location $location -Name $nsgName
+
+} else {
+
+    Write-Output "Network security group $nsgName already exists."
+
+}
+
+ 
+
+# Create Network Interface if it doesn't exist
+
+$nic = Get-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($nic -eq $null) {
+
+    Write-Output "Creating network interface: $nicName"
+
+    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -NetworkSecurityGroupId $nsg.Id -PublicIpAddressId $publicIP.Id
+
+} else {
+
+    Write-Output "Network interface $nicName already exists."
+
+}
+
+ 
+
+# Create the Virtual Machine
+
+$vm = Get-AzVM -Name $vmName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+
+if ($vm -eq $null) {
+
+    Write-Output "Creating virtual machine: $vmName"
+
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $vmSize | `
+
+                Set-AzVMOperatingSystem -Linux -ComputerName $vmName -Credential (Get-Credential) | `
+
+                Set-AzVMSourceImage -PublisherName "Canonical" -Offer $image -Skus "latest" | `
+
+                Add-AzVMNetworkInterface -Id $nic.Id
+
+    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
+
+} else {
+
+    Write-Output "Virtual machine $vmName already exists."
+
+}
